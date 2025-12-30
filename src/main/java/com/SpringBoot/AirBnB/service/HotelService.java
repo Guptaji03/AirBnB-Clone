@@ -1,6 +1,7 @@
 package com.SpringBoot.AirBnB.service;
 
 import com.SpringBoot.AirBnB.dto.HotelDto;
+import com.SpringBoot.AirBnB.dto.HotelInfoDto;
 
 public interface HotelService {
     HotelDto createNewHotel(HotelDto hotelDto);
@@ -12,4 +13,7 @@ public interface HotelService {
     void deleteHotelById(Long id);
 
     void activateHotel(Long hotelId);
+
+    HotelInfoDto getHotelInfoById(Long hotelId);
+
 }
