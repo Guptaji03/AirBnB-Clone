@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -44,6 +45,9 @@ public class Room {
 
     @Column(nullable = false)
     private Integer capacity;
+
+    @OneToMany(mappedBy = "room", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Inventory> inventories;
 
     @CreationTimestamp
     @Column(updatable = false)
