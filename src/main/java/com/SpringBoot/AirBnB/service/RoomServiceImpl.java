@@ -3,15 +3,19 @@ package com.SpringBoot.AirBnB.service;
 import com.SpringBoot.AirBnB.dto.RoomDto;
 import com.SpringBoot.AirBnB.entity.Hotel;
 import com.SpringBoot.AirBnB.entity.Room;
+import com.SpringBoot.AirBnB.entity.User;
 import com.SpringBoot.AirBnB.exception.ResourceNotFoundException;
+import com.SpringBoot.AirBnB.exception.UnAuthorisedException;
 import com.SpringBoot.AirBnB.repository.HotelRepository;
 import com.SpringBoot.AirBnB.repository.RoomRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -19,9 +23,8 @@ import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 @Service
+@Slf4j
 public class RoomServiceImpl implements RoomService{
-
-    Logger log = LoggerFactory.getLogger(HotelService.class);
 
     private final RoomRepository roomRepository;
     private final HotelRepository hotelRepository;
@@ -29,14 +32,20 @@ public class RoomServiceImpl implements RoomService{
     private final ModelMapper modelMapper;
 
     @Override
-    @Transactional
     public RoomDto createNewRoom(Long hotelId, RoomDto roomDto) {
-        log.info("Creating a new room in hotel with id :- {}" , hotelId);
-        Hotel hotel = hotelRepository.findById(hotelId)
-                .orElseThrow(()-> new ResourceNotFoundException("Hotel not found with id :- " + hotelId));
-       Room room  =modelMapper.map(roomDto,Room.class);
-       room.setHotel(hotel);
-       room = roomRepository.save(room);
+        log.info("Creating a new room in hotel with ID: {}", hotelId);
+        Hotel hotel = hotelRepository
+                .findById(hotelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with ID: "+hotelId));
+
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if(!user.equals(hotel.getOwner())) {
+            throw new UnAuthorisedException("This user does not own this hotel with id: "+hotelId);
+        }
+
+        Room room = modelMapper.map(roomDto, Room.class);
+        room.setHotel(hotel);
+        room = roomRepository.save(room);
 
         if (hotel.getActive()) {
             inventoryService.initializeRoomForAYear(room);
@@ -50,7 +59,12 @@ public class RoomServiceImpl implements RoomService{
         log.info("Getting all rooms in hotel with ID: {}", hotelId);
         Hotel hotel = hotelRepository
                 .findById(hotelId)
-                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found while trying to get all the hotels with ID: "+hotelId));
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with ID: "+hotelId));
+
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if(!user.equals(hotel.getOwner())) {
+            throw new UnAuthorisedException("This user does not own this hotel with id: "+hotelId);
+        }
 
         return hotel.getRooms()
                 .stream()
@@ -63,18 +77,49 @@ public class RoomServiceImpl implements RoomService{
         log.info("Getting the room with ID: {}", roomId);
         Room room = roomRepository
                 .findById(roomId)
-                .orElseThrow(() -> new ResourceNotFoundException("Room not found while trying to get room with ID: "+roomId));
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: "+roomId));
         return modelMapper.map(room, RoomDto.class);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @Override
-    @Transactional
     public void deleteRoomById(Long roomId) {
         log.info("Deleting the room with ID: {}", roomId);
         Room room = roomRepository
                 .findById(roomId)
-                .orElseThrow(() -> new ResourceNotFoundException("Room not found while trying to delete room with ID: "+roomId));
-        inventoryService.deleteFutureInventories(room);
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: "+roomId));
+
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if(!user.equals(room.getHotel().getOwner())) {
+            throw new UnAuthorisedException("This user does not own this room with id: "+roomId);
+        }
+
+        inventoryService.deleteAllInventories(room);
         roomRepository.deleteById(roomId);
+    }
+
+    @Override
+    @Transactional
+    public RoomDto updateRoomById(Long hotelId, Long roomId, RoomDto roomDto) {
+        log.info("Updating the room with ID: {}", roomId);
+        Hotel hotel = hotelRepository
+                .findById(hotelId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hotel not found with ID: "+hotelId));
+
+        User user = getCurrentUser();
+        if(!user.equals(hotel.getOwner())) {
+            throw new UnAuthorisedException("This user does not own this hotel with id: "+hotelId);
+        }
+
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found with ID: "+roomId));
+
+        modelMapper.map(roomDto, room);
+        room.setId(roomId);
+
+//        TODO: if price or inventory is updated, then update the inventory for this room
+        room = roomRepository.save(room);
+
+        return modelMapper.map(room, RoomDto.class);
     }
 }
